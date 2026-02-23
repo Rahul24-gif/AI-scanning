@@ -400,8 +400,21 @@ export default function App() {
 
       {/* Main Viewport */}
       <main className="flex-1 relative flex items-center justify-center bg-black overflow-hidden">
-        {!isCameraActive ? (
-          <div className="flex flex-col items-center gap-6 p-8 text-center max-w-md">
+        <video 
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className={`absolute inset-0 w-full h-full object-cover opacity-60 grayscale-[0.5] ${!isCameraActive ? 'hidden' : ''}`}
+        />
+        <canvas 
+          ref={canvasRef}
+          onClick={handleCanvasClick}
+          className={`absolute inset-0 w-full h-full object-cover cursor-crosshair z-10 ${!isCameraActive ? 'hidden' : ''}`}
+        />
+
+        {!isCameraActive && (
+          <div className="flex flex-col items-center gap-6 p-8 text-center max-w-md z-30">
             <div className="w-20 h-20 rounded-full bg-neutral-900 flex items-center justify-center border border-white/10">
               <Camera className="text-neutral-500" size={40} />
             </div>
@@ -433,77 +446,65 @@ export default function App() {
               <span>Model: COCO-SSD (TensorFlow.js)</span>
             </div>
           </div>
-        ) : (
-          <div className="relative w-full h-full flex items-center justify-center">
-            <video 
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="absolute inset-0 w-full h-full object-cover opacity-60 grayscale-[0.5]"
-            />
-            <canvas 
-              ref={canvasRef}
-              onClick={handleCanvasClick}
-              className="absolute inset-0 w-full h-full object-cover cursor-crosshair z-10"
-            />
+        )}
 
+        {isCameraActive && (
+          <div className="absolute inset-0 pointer-events-none z-20">
             {/* HUD Overlay */}
-            <div className="absolute inset-0 pointer-events-none z-20">
-              {/* Corner Accents */}
-              <div className="absolute top-8 left-8 w-12 h-12 border-t-2 border-l-2 border-white/20 rounded-tl-lg" />
-              <div className="absolute top-8 right-8 w-12 h-12 border-t-2 border-r-2 border-white/20 rounded-tr-lg" />
-              <div className="absolute bottom-8 left-8 w-12 h-12 border-b-2 border-l-2 border-white/20 rounded-bl-lg" />
-              <div className="absolute bottom-8 right-8 w-12 h-12 border-b-2 border-r-2 border-white/20 rounded-br-lg" />
+            {/* Corner Accents */}
+            <div className="absolute top-8 left-8 w-12 h-12 border-t-2 border-l-2 border-white/20 rounded-tl-lg" />
+            <div className="absolute top-8 right-8 w-12 h-12 border-t-2 border-r-2 border-white/20 rounded-tr-lg" />
+            <div className="absolute bottom-8 left-8 w-12 h-12 border-b-2 border-l-2 border-white/20 rounded-bl-lg" />
+            <div className="absolute bottom-8 right-8 w-12 h-12 border-b-2 border-r-2 border-white/20 rounded-br-lg" />
 
-              {/* Guidance Indicator */}
-              <AnimatePresence>
-                {guidance && (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.8, y: 20 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.8, y: 20 }}
-                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-4"
-                  >
-                    <div className="bg-red-500 text-white p-6 rounded-full shadow-2xl shadow-red-500/40 animate-pulse">
-                      {guidance === 'Move Left' && <MoveLeft size={48} />}
-                      {guidance === 'Move Right' && <MoveRight size={48} />}
-                      {guidance === 'Move Up' && <MoveUp size={48} />}
-                      {guidance === 'Move Down' && <MoveDown size={48} />}
-                      {guidance === 'Object Lost - Searching...' && <AlertTriangle size={48} />}
-                    </div>
-                    <div className="bg-black/80 backdrop-blur-md border border-red-500/50 px-6 py-2 rounded-xl">
-                      <span className="text-red-400 font-bold uppercase tracking-widest text-sm">{guidance}</span>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+            {/* Guidance Indicator */}
+            <AnimatePresence>
+              {guidance && (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.8, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.8, y: 20 }}
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-4"
+                >
+                  <div className="bg-red-500 text-white p-6 rounded-full shadow-2xl shadow-red-500/40 animate-pulse">
+                    {guidance === 'Move Left' && <MoveLeft size={48} />}
+                    {guidance === 'Move Right' && <MoveRight size={48} />}
+                    {guidance === 'Move Up' && <MoveUp size={48} />}
+                    {guidance === 'Move Down' && <MoveDown size={48} />}
+                    {guidance === 'Object Lost - Searching...' && <AlertTriangle size={48} />}
+                  </div>
+                  <div className="bg-black/80 backdrop-blur-md border border-red-500/50 px-6 py-2 rounded-xl">
+                    <span className="text-red-400 font-bold uppercase tracking-widest text-sm">{guidance}</span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-              {/* Status Bar Bottom */}
-              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xl px-4">
-                <div className="bg-neutral-900/80 backdrop-blur-xl border border-white/10 p-4 rounded-2xl shadow-2xl flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${lockedObject ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-neutral-500'}`}>
-                      {lockedObject ? <Lock size={24} /> : <Unlock size={24} />}
-                    </div>
-                    <div>
-                      <p className="text-xs text-neutral-500 font-mono uppercase tracking-widest">Target Status</p>
-                      <p className="font-bold">
-                        {lockedObject ? `Tracking: ${lockedObject.class}` : 'Select target to lock'}
+            {/* Status Bar Bottom */}
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xl px-4">
+              <div className="bg-neutral-900/80 backdrop-blur-xl border border-white/10 p-4 rounded-2xl shadow-2xl flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${lockedObject ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-neutral-500'}`}>
+                    {lockedObject ? <Lock size={24} /> : <Unlock size={24} />}
+                  </div>
+                  <div>
+                    <p className="text-xs text-neutral-500 font-mono uppercase tracking-widest">Target Status</p>
+                    <p className="font-bold">
+                      {lockedObject ? `Tracking: ${lockedObject.class}` : 'Select target to lock'}
+                    </p>
+                  </div>
+                </div>
+                
+                {lockedObject && (
+                  <div className="flex items-center gap-6">
+                    <div className="text-right">
+                      <p className="text-[10px] text-neutral-500 font-mono uppercase tracking-widest">Proximity</p>
+                      <p className="font-bold text-emerald-400">
+                        {Math.round((lockedObject.bbox[2] * lockedObject.bbox[3]) / (dimensions.width * dimensions.height) * 100)}%
                       </p>
                     </div>
-                  </div>
-                  
-                  {lockedObject && (
-                    <div className="flex items-center gap-6">
-                      <div className="text-right">
-                        <p className="text-[10px] text-neutral-500 font-mono uppercase tracking-widest">Proximity</p>
-                        <p className="font-bold text-emerald-400">
-                          {Math.round((lockedObject.bbox[2] * lockedObject.bbox[3]) / (dimensions.width * dimensions.height) * 100)}%
-                        </p>
-                      </div>
-                      <button 
-                        onClick={() => {
+                    <button 
+                      onClick={() => {
                         setLockedObject(null);
                         smoothingRef.current = null;
                         setStatus('scanning');
@@ -515,7 +516,6 @@ export default function App() {
                     </button>
                   </div>
                 )}
-                </div>
               </div>
             </div>
           </div>
