@@ -1,0 +1,7 @@
+{
+  "name": "VisionGuard: Real-Time Object Tracker",
+  "description": "An advanced real-time object tracking application using TensorFlow.js. Lock onto objects, receive directional guidance, and set proximity alarms.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
