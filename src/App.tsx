@@ -27,7 +27,28 @@ interface SmoothingState {
   y: number;
   w: number;
   h: number;
+  vx: number;
+  vy: number;
+  vw: number;
+  vh: number;
 }
+
+// --- Helpers ---
+const calculateIoU = (box1: [number, number, number, number], box2: [number, number, number, number]) => {
+  const [x1, y1, w1, h1] = box1;
+  const [x2, y2, w2, h2] = box2;
+
+  const xA = Math.max(x1, x2);
+  const yA = Math.max(y1, y2);
+  const xB = Math.min(x1 + w1, x2 + w2);
+  const yB = Math.min(y1 + h1, y2 + h2);
+
+  const interArea = Math.max(0, xB - xA) * Math.max(0, yB - yA);
+  const box1Area = w1 * h1;
+  const box2Area = w2 * h2;
+
+  return interArea / (box1Area + box2Area - interArea);
+};
 
 // --- Constants ---
 const CONFIDENCE_THRESHOLD = 0.5;
@@ -185,39 +206,78 @@ export default function App() {
       return;
     }
 
+    const now = Date.now();
+    const dt = Math.min(now - currentLocked.lastSeen, 100) / 1000; // time delta in seconds, max 100ms
+
+    // Predict next position based on velocity if we have smoothing state
+    let predictedBox = [...currentLocked.bbox] as [number, number, number, number];
+    if (smoothingRef.current) {
+       predictedBox = [
+         smoothingRef.current.x + smoothingRef.current.vx * dt,
+         smoothingRef.current.y + smoothingRef.current.vy * dt,
+         smoothingRef.current.w + smoothingRef.current.vw * dt,
+         smoothingRef.current.h + smoothingRef.current.vh * dt,
+       ];
+    }
+
     // Find the best match for the locked object
     const matches = predictions.filter(p => p.class === currentLocked.class);
     let bestMatch: DetectedObject | null = null;
+    let bestScore = -1;
 
     if (matches.length > 0) {
-      // Find match closest to last known position
-      let minDistance = Infinity;
       matches.forEach(m => {
-        const dx = m.bbox[0] - currentLocked.bbox[0];
-        const dy = m.bbox[1] - currentLocked.bbox[1];
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < minDistance) {
-          minDistance = dist;
+        const iou = calculateIoU(predictedBox, m.bbox);
+        
+        // Center distance
+        const cx1 = predictedBox[0] + predictedBox[2] / 2;
+        const cy1 = predictedBox[1] + predictedBox[3] / 2;
+        const cx2 = m.bbox[0] + m.bbox[2] / 2;
+        const cy2 = m.bbox[1] + m.bbox[3] / 2;
+        const dist = Math.sqrt(Math.pow(cx1 - cx2, 2) + Math.pow(cy1 - cy2, 2));
+        
+        // Normalize distance based on object size
+        const maxDist = Math.max(predictedBox[2], predictedBox[3], 1);
+        const distScore = Math.max(0, 1 - dist / maxDist);
+
+        // Combined score: heavily weight IoU and distance, then confidence
+        const score = (iou * 0.5) + (distScore * 0.4) + (m.score * 0.1);
+
+        if (score > 0.3 && score > bestScore) {
+          bestScore = score;
           bestMatch = m;
         }
       });
     }
 
-    const now = Date.now();
-
     if (bestMatch && (bestMatch as DetectedObject).score > CONFIDENCE_THRESHOLD) {
       const match = bestMatch as DetectedObject;
       
-      // Smoothing
+      // Advanced Smoothing (PD controller-like)
       if (!smoothingRef.current) {
-        smoothingRef.current = { x: match.bbox[0], y: match.bbox[1], w: match.bbox[2], h: match.bbox[3] };
-      } else {
-        smoothingRef.current = {
-          x: smoothingRef.current.x + (match.bbox[0] - smoothingRef.current.x) * SMOOTHING_FACTOR,
-          y: smoothingRef.current.y + (match.bbox[1] - smoothingRef.current.y) * SMOOTHING_FACTOR,
-          w: smoothingRef.current.w + (match.bbox[2] - smoothingRef.current.w) * SMOOTHING_FACTOR,
-          h: smoothingRef.current.h + (match.bbox[3] - smoothingRef.current.h) * SMOOTHING_FACTOR,
+        smoothingRef.current = { 
+          x: match.bbox[0], y: match.bbox[1], w: match.bbox[2], h: match.bbox[3],
+          vx: 0, vy: 0, vw: 0, vh: 0
         };
+      } else {
+        const prev = smoothingRef.current;
+        const alpha = SMOOTHING_FACTOR; // Position smoothing
+        const beta = 0.1; // Velocity smoothing
+        
+        const newX = prev.x + (match.bbox[0] - prev.x) * alpha;
+        const newY = prev.y + (match.bbox[1] - prev.y) * alpha;
+        const newW = prev.w + (match.bbox[2] - prev.w) * alpha;
+        const newH = prev.h + (match.bbox[3] - prev.h) * alpha;
+
+        if (dt > 0) {
+           smoothingRef.current = {
+             x: newX, y: newY, w: newW, h: newH,
+             vx: prev.vx + ((newX - prev.x) / dt - prev.vx) * beta,
+             vy: prev.vy + ((newY - prev.y) / dt - prev.vy) * beta,
+             vw: prev.vw + ((newW - prev.w) / dt - prev.vw) * beta,
+             vh: prev.vh + ((newH - prev.h) / dt - prev.vh) * beta,
+           };
+        }
       }
 
       setLockedObject({
@@ -242,7 +302,25 @@ export default function App() {
         setGuidance(null);
       }
     } else {
-      // Object lost
+      // Object lost - predict position
+      if (smoothingRef.current && dt > 0 && dt < 0.5) { // Only predict for up to 500ms
+         // Apply friction to velocity
+         smoothingRef.current.vx *= 0.9;
+         smoothingRef.current.vy *= 0.9;
+         smoothingRef.current.vw *= 0.9;
+         smoothingRef.current.vh *= 0.9;
+
+         smoothingRef.current.x += smoothingRef.current.vx * dt;
+         smoothingRef.current.y += smoothingRef.current.vy * dt;
+         smoothingRef.current.w += smoothingRef.current.vw * dt;
+         smoothingRef.current.h += smoothingRef.current.vh * dt;
+
+         setLockedObject({
+           ...currentLocked,
+           bbox: [smoothingRef.current.x, smoothingRef.current.y, smoothingRef.current.w, smoothingRef.current.h]
+         });
+      }
+
       if (now - currentLocked.lastSeen > ALARM_TIMEOUT) {
         setStatus('alarm');
         setGuidance("Object Lost - Searching...");
@@ -349,7 +427,10 @@ export default function App() {
         bbox: clickedObject.bbox,
         lastSeen: Date.now()
       });
-      smoothingRef.current = { x: clickedObject.bbox[0], y: clickedObject.bbox[1], w: clickedObject.bbox[2], h: clickedObject.bbox[3] };
+      smoothingRef.current = { 
+        x: clickedObject.bbox[0], y: clickedObject.bbox[1], w: clickedObject.bbox[2], h: clickedObject.bbox[3],
+        vx: 0, vy: 0, vw: 0, vh: 0
+      };
       setStatus('locked');
     }
   };
