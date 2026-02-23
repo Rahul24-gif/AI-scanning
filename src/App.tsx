@@ -288,7 +288,7 @@ export default function App() {
 
       // Check boundaries
       const { x, y, w, h } = smoothingRef.current;
-      const margin = 50;
+      const margin = 0; // Allow tracking right up to the edge
       const isOutOfBounds = x < margin || y < margin || (x + w) > (dimensions.width - margin) || (y + h) > (dimensions.height - margin);
 
       if (isOutOfBounds) {
@@ -319,6 +319,16 @@ export default function App() {
            ...currentLocked,
            bbox: [smoothingRef.current.x, smoothingRef.current.y, smoothingRef.current.w, smoothingRef.current.h]
          });
+
+         // Check boundaries even while predicting
+         const { x, y, w, h } = smoothingRef.current;
+         const margin = 0;
+         const isOutOfBounds = x < margin || y < margin || (x + w) > (dimensions.width - margin) || (y + h) > (dimensions.height - margin);
+         
+         if (isOutOfBounds) {
+           setStatus('alarm');
+           updateGuidance(x, y, w, h);
+         }
       }
 
       if (now - currentLocked.lastSeen > ALARM_TIMEOUT) {
@@ -391,6 +401,17 @@ export default function App() {
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 16px Inter';
       ctx.fillText(`LOCKED: ${lockedObject.class.toUpperCase()}`, x + 10, y - 10);
+      
+      // Additional Info Box below object
+      const dist = lockedObject.bbox[3] > 0 ? (0.5 * 500 / lockedObject.bbox[3]).toFixed(1) : '?';
+      const conf = Math.round((predictions.find(d => d.class === lockedObject.class)?.score || 0) * 100);
+      
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(x, y + height + 5, 150, 45);
+      ctx.fillStyle = '#10b981';
+      ctx.font = '12px Inter';
+      ctx.fillText(`Type: ${lockedObject.class}`, x + 10, y + height + 20);
+      ctx.fillText(`Dist: ~${dist}m | Conf: ${conf}%`, x + 10, y + height + 40);
     }
   };
 
@@ -582,6 +603,19 @@ export default function App() {
                       <p className="text-[10px] text-neutral-500 font-mono uppercase tracking-widest">Proximity</p>
                       <p className="font-bold text-emerald-400">
                         {Math.round((lockedObject.bbox[2] * lockedObject.bbox[3]) / (dimensions.width * dimensions.height) * 100)}%
+                      </p>
+                    </div>
+                    <div className="text-right hidden sm:block">
+                      <p className="text-[10px] text-neutral-500 font-mono uppercase tracking-widest">Est. Distance</p>
+                      <p className="font-bold text-emerald-400">
+                        {/* Rough estimation: assume average object is 0.5m tall, focal length ~500px */}
+                        {lockedObject.bbox[3] > 0 ? (0.5 * 500 / lockedObject.bbox[3]).toFixed(1) : '?'}m
+                      </p>
+                    </div>
+                    <div className="text-right hidden sm:block">
+                      <p className="text-[10px] text-neutral-500 font-mono uppercase tracking-widest">Confidence</p>
+                      <p className="font-bold text-emerald-400">
+                        {Math.round((detections.find(d => d.class === lockedObject.class)?.score || 0) * 100)}%
                       </p>
                     </div>
                     <button 
